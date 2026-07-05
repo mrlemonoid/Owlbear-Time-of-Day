@@ -1,7 +1,7 @@
 export const ID = "com.mrlemon.time-of-day-filter";
 export const STATE_KEY = `${ID}/state`;
 export const LOCAL_EFFECT_KEY = `${ID}/local-effect`;
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export const ANCHOR_ORDER = ["night", "dawn", "day", "sunset"];
 
@@ -204,7 +204,7 @@ export function makeStateFromHour(hourValue, patch = {}) {
 }
 
 export function serializeState(state) {
-  return {
+  const serialized = {
     schemaVersion: SCHEMA_VERSION,
     enabled: Boolean(state.enabled),
     targetMode: state.targetMode ?? DEFAULT_STATE.targetMode,
@@ -214,6 +214,12 @@ export function serializeState(state) {
     anchors: mergeAnchors(state.anchors),
     updatedAt: Date.now(),
   };
+
+  if (state.transition) {
+    serialized.transition = state.transition;
+  }
+
+  return serialized;
 }
 
 export function normalizeState(metadata) {

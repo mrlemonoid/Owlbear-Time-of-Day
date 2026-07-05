@@ -45,6 +45,55 @@ half4 main(float2 coord) {
 }
 `;
 
+let metadataTransitionFrame = null;
+let activeTransitionKey = null;
+
+function stopMetadataTransition() {
+  if (metadataTransitionFrame !== null) {
+    cancelAnimationFrame(metadataTransitionFrame);
+    metadataTransitionFrame = null;
+  }
+  activeTransitionKey = null;
+}
+
+function lerpNumber(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function lerpTint(a, b, t) {
+  return {
+    x: lerpNumber(a?.x ?? 1, b?.x ?? 1, t),
+    y: lerpNumber(a?.y ?? 1, b?.y ?? 1, t),
+    z: lerpNumber(a?.z ?? 1, b?.z ?? 1, t),
+  };
+}
+
+function transitionStateAt(transition, elapsedMs) {
+  const duration = Math.max(1, Number(transition?.durationMs ?? 5000));
+  const t = Math.min(1, Math.max(0, elapsedMs / duration));
+  const eased = t * t * (3 - 2 * t);
+
+  const fromState = transition?.startState ?? DEFAULT_STATE;
+  const toState = transition?.targetState ?? DEFAULT_STATE;
+  const startHour = Number(transition?.startHour ?? fromState.hour ?? 12);
+  const delta = Number(transition?.hourDelta ?? 0);
+  const hour = ((startHour + delta * eased) % 24 + 24) % 24;
+
+  return {
+    ...toState,
+    hour,
+    label: eased < 0.5 ? fromState.label : toState.label,
+    darkness: lerpNumber(fromState.darkness ?? 0, toState.darkness ?? 0, eased),
+    tintAlpha: lerpNumber(fromState.tintAlpha ?? 0, toState.tintAlpha ?? 0, eased),
+    vignette: lerpNumber(fromState.vignette ?? 0, toState.vignette ?? 0, eased),
+    gradient: lerpNumber(fromState.gradient ?? 0, toState.gradient ?? 0, eased),
+    brighten: lerpNumber(fromState.brighten ?? 0, toState.brighten ?? 0, eased),
+    tint: lerpTint(fromState.tint, toState.tint, eased),
+    updatedAt: Date.now(),
+  };
+}
+
+
 function isMapImage(item) {
   return item?.layer === "MAP" && isImage(item);
 }
@@ -167,8 +216,42 @@ export async function renderLocalOverlaysFromState(stateInput) {
 }
 
 export async function renderLocalOverlaysFromMetadata(metadata) {
-  const state = normalizeState(metadata);
-  await renderLocalOverlaysFromState(state);
+  const savedState = metadata?.[STATE_KEY];
+  const finalState = normalizeState(metadata);
+  const transition = savedState?.transition;
+  const now = Date.now();
+
+  if (!transition?.startedAt || now >= transition.startedAt + transition.durationMs) {
+    stopMetadataTransition();
+    await renderLocalOverlaysFromState(finalState);
+    return;
+  }
+
+  const key = `${transition.startedAt}:${transition.durationMs}:${transition.targetHour}:${savedState?.updatedAt ?? ""}`;
+  if (activeTransitionKey === key && metadataTransitionFrame !== null) {
+    return;
+  }
+
+  stopMetadataTransition();
+  activeTransitionKey = key;
+
+  const tick = async () => {
+    const frameNow = Date.now();
+    const elapsed = frameNow - transition.startedAt;
+
+    if (elapsed >= transition.durationMs) {
+      metadataTransitionFrame = null;
+      activeTransitionKey = null;
+      await renderLocalOverlaysFromState(finalState);
+      return;
+    }
+
+    const frameState = transitionStateAt(transition, elapsed);
+    await renderLocalOverlaysFromState(frameState);
+    metadataTransitionFrame = requestAnimationFrame(tick);
+  };
+
+  await tick();
 }
 
 export async function getSceneState() {

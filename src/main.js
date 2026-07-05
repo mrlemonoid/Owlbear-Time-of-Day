@@ -136,6 +136,27 @@ function animateToHour(targetHour, durationMs = 5000) {
 
   const startHour = clampHour(state.hour);
   const delta = forwardHourDelta(startHour, clampHour(targetHour));
+  const transition = {
+    startedAt: Date.now(),
+    durationMs,
+    startHour,
+    targetHour: clampHour(targetHour),
+    hourDelta: delta,
+    startState,
+    targetState,
+  };
+
+  // Save the transition immediately so every connected client can animate it locally.
+  void setSceneState({
+    ...targetState,
+    enabled: true,
+    targetMode: state.targetMode,
+    targetIds: state.targetIds ?? [],
+    selectedAnchor: state.selectedAnchor,
+    anchors: state.anchors,
+    transition,
+  });
+
   const start = performance.now();
 
   const tick = (now) => {
