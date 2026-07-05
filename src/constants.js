@@ -1,7 +1,7 @@
 export const ID = "com.mrlemon.time-of-day-filter";
 export const STATE_KEY = `${ID}/state`;
 export const LOCAL_EFFECT_KEY = `${ID}/local-effect`;
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const ANCHOR_ORDER = ["night", "dawn", "day", "sunset"];
 

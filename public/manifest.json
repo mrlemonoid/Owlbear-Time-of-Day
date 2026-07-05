@@ -1,8 +1,8 @@
 {
   "name": "Time of Day",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "manifest_version": 1,
-  "description": "Time of Day filter for Owlbear Rodeo map images with synced day/night transitions.",
+  "description": "Time of Day filter for Owlbear Rodeo map images with reliable synced transitions.",
   "author": "Mr.Lemonoid",
   "icon": "/icon.svg",
   "action": {

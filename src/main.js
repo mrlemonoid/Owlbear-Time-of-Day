@@ -26,6 +26,9 @@ let previewTimer = null;
 let lastLocalUpdatedAt = 0;
 let detailsOpen = true;
 let transitionFrame = null;
+let saveInFlight = false;
+let pendingSave = false;
+let saveVersion = 0;
 
 function pct(value) {
   return Math.round(clamp01(value) * 100);
@@ -119,6 +122,8 @@ function interpolateVisualState(fromState, toState, t, hour) {
 
 function animateToHour(targetHour, durationMs = 5000) {
   stopTransition();
+  window.clearTimeout(saveTimer);
+  saveTimer = null;
 
   const startState = {
     ...state,
@@ -146,7 +151,7 @@ function animateToHour(targetHour, durationMs = 5000) {
     targetState,
   };
 
-  // Save the transition immediately so every connected client can animate it locally.
+  // This metadata is the actual sync signal. Every client sees it and animates locally.
   void setSceneState({
     ...targetState,
     enabled: true,
@@ -155,6 +160,8 @@ function animateToHour(targetHour, durationMs = 5000) {
     selectedAnchor: state.selectedAnchor,
     anchors: state.anchors,
     transition,
+  }).then((saved) => {
+    lastLocalUpdatedAt = saved.updatedAt;
   });
 
   const start = performance.now();
@@ -332,18 +339,53 @@ function schedulePreview() {
   }, 16);
 }
 
-function scheduleSave(immediate = false) {
+async function performSave() {
   if (!connected) return;
-  window.clearTimeout(saveTimer);
+  if (saveInFlight) {
+    pendingSave = true;
+    return;
+  }
 
-  const run = async () => {
-    const saved = await setSceneState({ ...state, enabled: true });
-    lastLocalUpdatedAt = saved.updatedAt;
-    state = saved;
+  saveInFlight = true;
+  const version = ++saveVersion;
+  const snapshot = {
+    ...state,
+    enabled: true,
+    tint: { ...(state.tint ?? {}) },
+    anchors: structuredClone(state.anchors),
   };
 
-  if (immediate) void run();
-  else saveTimer = window.setTimeout(run, 120);
+  try {
+    const saved = await setSceneState(snapshot);
+    if (version === saveVersion) {
+      lastLocalUpdatedAt = saved.updatedAt;
+      state = { ...state, updatedAt: saved.updatedAt };
+    }
+  } finally {
+    saveInFlight = false;
+    if (pendingSave) {
+      pendingSave = false;
+      scheduleSave(false);
+    }
+  }
+}
+
+function scheduleSave(immediate = false) {
+  if (!connected) return;
+
+  if (immediate) {
+    window.clearTimeout(saveTimer);
+    saveTimer = null;
+    void performSave();
+    return;
+  }
+
+  // Throttle instead of debounce: while dragging, other clients still get updates.
+  if (saveTimer !== null) return;
+  saveTimer = window.setTimeout(() => {
+    saveTimer = null;
+    void performSave();
+  }, 80);
 }
 
 function deriveFromHour() {

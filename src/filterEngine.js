@@ -45,13 +45,13 @@ half4 main(float2 coord) {
 }
 `;
 
-let metadataTransitionFrame = null;
+let metadataTransitionTimer = null;
 let activeTransitionKey = null;
 
 function stopMetadataTransition() {
-  if (metadataTransitionFrame !== null) {
-    cancelAnimationFrame(metadataTransitionFrame);
-    metadataTransitionFrame = null;
+  if (metadataTransitionTimer !== null) {
+    clearTimeout(metadataTransitionTimer);
+    metadataTransitionTimer = null;
   }
   activeTransitionKey = null;
 }
@@ -89,6 +89,7 @@ function transitionStateAt(transition, elapsedMs) {
     gradient: lerpNumber(fromState.gradient ?? 0, toState.gradient ?? 0, eased),
     brighten: lerpNumber(fromState.brighten ?? 0, toState.brighten ?? 0, eased),
     tint: lerpTint(fromState.tint, toState.tint, eased),
+    enabled: true,
     updatedAt: Date.now(),
   };
 }
@@ -221,14 +222,14 @@ export async function renderLocalOverlaysFromMetadata(metadata) {
   const transition = savedState?.transition;
   const now = Date.now();
 
-  if (!transition?.startedAt || now >= transition.startedAt + transition.durationMs) {
+  if (!transition?.startedAt || !transition?.durationMs || now >= transition.startedAt + transition.durationMs) {
     stopMetadataTransition();
     await renderLocalOverlaysFromState(finalState);
     return;
   }
 
   const key = `${transition.startedAt}:${transition.durationMs}:${transition.targetHour}:${savedState?.updatedAt ?? ""}`;
-  if (activeTransitionKey === key && metadataTransitionFrame !== null) {
+  if (activeTransitionKey === key && metadataTransitionTimer !== null) {
     return;
   }
 
@@ -240,7 +241,7 @@ export async function renderLocalOverlaysFromMetadata(metadata) {
     const elapsed = frameNow - transition.startedAt;
 
     if (elapsed >= transition.durationMs) {
-      metadataTransitionFrame = null;
+      metadataTransitionTimer = null;
       activeTransitionKey = null;
       await renderLocalOverlaysFromState(finalState);
       return;
@@ -248,7 +249,7 @@ export async function renderLocalOverlaysFromMetadata(metadata) {
 
     const frameState = transitionStateAt(transition, elapsed);
     await renderLocalOverlaysFromState(frameState);
-    metadataTransitionFrame = requestAnimationFrame(tick);
+    metadataTransitionTimer = setTimeout(tick, 50);
   };
 
   await tick();
